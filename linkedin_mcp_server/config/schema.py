@@ -31,6 +31,7 @@ class BrowserConfig:
     viewport_height: int = 720
     default_timeout: int = 5000  # Milliseconds for page operations
     chrome_path: str | None = None  # Path to Chrome/Chromium executable
+    browser_channel: str | None = None  # Patchright channel: chrome, chromium, msedge
     user_data_dir: str = "~/.linkedin-mcp/profile"  # Persistent browser profile
 
     def validate(self) -> None:

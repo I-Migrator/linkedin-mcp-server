@@ -978,7 +978,7 @@ wheels = [
 
 [[package]]
 name = "linkedin-scraper-mcp"
-version = "4.13.0"
+version = "4.13.0+imigrator.3"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -1003,7 +1003,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.0.0" },
     { name = "inquirer", specifier = ">=3.4.0" },
-    { name = "patchright", specifier = ">=1.40.0" },
+    { name = "patchright", specifier = ">=1.40.0,<2.0.0" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
 ]
 

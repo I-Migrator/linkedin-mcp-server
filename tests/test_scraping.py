@@ -4548,3 +4548,143 @@ class TestBuildFeedReferences:
             "/posts/alice_x-ugcPost-1-xx",
         ]
         assert kinds == {"feed_post"}
+
+
+class TestExtractConversationThreadRefsTimestamps:
+    """Verify _extract_conversation_thread_refs surfaces timestamps from the
+    inbox / search sidebar so callers can sort by recency without re-parsing
+    the raw text dump."""
+
+    async def test_iso_timestamp_preferred_over_relative_text(self, mock_page):
+        """When LinkedIn exposes <time datetime>, the ISO value wins."""
+        extractor = LinkedInExtractor(mock_page)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.evaluate = AsyncMock(
+            return_value=[
+                {
+                    "ariaLabel": "Select conversation with Alice Liu",
+                    "threadId": "2-abc",
+                    "timestamp": "2d",
+                    "timestampIso": "2026-05-10T14:23:00.000Z",
+                },
+            ]
+        )
+        refs = await extractor._extract_conversation_thread_refs(
+            limit=10, context="inbox"
+        )
+        assert len(refs) == 1
+        assert refs[0]["timestamp"] == "2026-05-10T14:23:00.000Z"
+        assert refs[0]["text"] == "Alice Liu"
+        assert refs[0]["url"] == "/messaging/thread/2-abc/"
+        assert refs[0]["kind"] == "conversation"
+
+    async def test_relative_timestamp_used_when_iso_missing(self, mock_page):
+        """When <time datetime> is absent the rendered relative text is used."""
+        extractor = LinkedInExtractor(mock_page)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.evaluate = AsyncMock(
+            return_value=[
+                {
+                    "ariaLabel": "Select conversation with Bob Chen",
+                    "threadId": "2-def",
+                    "timestamp": "May 5",
+                    "timestampIso": "",
+                },
+            ]
+        )
+        refs = await extractor._extract_conversation_thread_refs(
+            limit=10, context="search"
+        )
+        assert len(refs) == 1
+        assert refs[0]["timestamp"] == "May 5"
+
+    async def test_no_timestamp_field_when_neither_present(self, mock_page):
+        """A row LinkedIn doesn't expose a timestamp for omits the field."""
+        extractor = LinkedInExtractor(mock_page)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.evaluate = AsyncMock(
+            return_value=[
+                {
+                    "ariaLabel": "Select conversation with No Time",
+                    "threadId": "2-ghi",
+                    "timestamp": "",
+                    "timestampIso": "",
+                },
+            ]
+        )
+        refs = await extractor._extract_conversation_thread_refs(
+            limit=10, context="inbox"
+        )
+        assert len(refs) == 1
+        assert "timestamp" not in refs[0]
+        assert refs[0]["text"] == "No Time"
+
+    async def test_timestamp_field_optional_for_legacy_payloads(self, mock_page):
+        """A page.evaluate result that predates the timestamp capture (no
+        timestamp/timestampIso keys) must still produce valid refs."""
+        extractor = LinkedInExtractor(mock_page)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.evaluate = AsyncMock(
+            return_value=[
+                {
+                    "ariaLabel": "Select conversation with Legacy",
+                    "threadId": "2-old",
+                },
+            ]
+        )
+        refs = await extractor._extract_conversation_thread_refs(
+            limit=10, context="inbox"
+        )
+        assert len(refs) == 1
+        assert refs[0]["url"] == "/messaging/thread/2-old/"
+        assert "timestamp" not in refs[0]
+        assert "snippet" not in refs[0]
+
+    async def test_snippet_captured_when_present(self, mock_page):
+        """When LinkedIn renders a message-snippet element, it surfaces as
+        the `snippet` field — enabling client-side keyword filtering without
+        opening each thread."""
+        extractor = LinkedInExtractor(mock_page)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.evaluate = AsyncMock(
+            return_value=[
+                {
+                    "ariaLabel": "Select conversation with Carol Park",
+                    "threadId": "2-snip",
+                    "timestamp": "1h",
+                    "timestampIso": "",
+                    "snippet": "Hi Carol, reaching out about i-migrator and...",
+                },
+            ]
+        )
+        refs = await extractor._extract_conversation_thread_refs(
+            limit=10, context="inbox"
+        )
+        assert len(refs) == 1
+        assert (
+            refs[0]["snippet"]
+            == "Hi Carol, reaching out about i-migrator and..."
+        )
+        assert refs[0]["text"] == "Carol Park"
+
+    async def test_empty_snippet_omitted_from_ref(self, mock_page):
+        """An empty snippet string should not produce a `snippet` key on the
+        Reference (keeps the payload tidy for new/empty conversations)."""
+        extractor = LinkedInExtractor(mock_page)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.evaluate = AsyncMock(
+            return_value=[
+                {
+                    "ariaLabel": "Select conversation with Empty",
+                    "threadId": "2-emp",
+                    "timestamp": "",
+                    "timestampIso": "",
+                    "snippet": "",
+                },
+            ]
+        )
+        refs = await extractor._extract_conversation_thread_refs(
+            limit=10, context="inbox"
+        )
+        assert len(refs) == 1
+        assert "snippet" not in refs[0]

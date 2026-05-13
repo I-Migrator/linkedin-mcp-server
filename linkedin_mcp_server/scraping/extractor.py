@@ -2893,7 +2893,11 @@ class LinkedInExtractor:
         await self._wait_for_main_text(log_context="Messaging inbox")
         await handle_modal_close(self._page)
 
-        scrolls = max(1, limit // 10)
+        # Scroll the inbox sidebar to lazy-load more conversation rows.
+        # Each LinkedIn lazy-load batch returns ~10 rows; scrolling N times
+        # surfaces ~10N rows. We cap at 30 scrolls so an honest mistake
+        # like limit=500 doesn't pin the browser for 5 minutes.
+        scrolls = max(2, min(limit // 5, 30))
         await self._scroll_main_scrollable_region(
             position="bottom", attempts=scrolls, pause_time=0.5
         )
@@ -2982,9 +2986,50 @@ class LinkedInExtractor:
                 for (let i = 0; i < cap; i++) {
                     const label = labels[i];
                     const ariaLabel = label.getAttribute('aria-label') || '';
-                    const clickTarget = label.closest('li')
+                    const li = label.closest('li');
+                    const clickTarget = li
                         ?.querySelector('div[class*="listitem__link"]');
                     if (!clickTarget) continue;
+                    // Capture the last-activity timestamp BEFORE clicking — the
+                    // click may re-render the row and lose the <time> element
+                    // for a few hundred ms. LinkedIn renders the per-row time
+                    // as a <time> element with a `datetime` attribute carrying
+                    // an ISO string and a relative-time text node ("2d", "May 5").
+                    let timestamp = '';
+                    let timestampIso = '';
+                    const timeEl = li?.querySelector('time');
+                    if (timeEl) {
+                        timestampIso = timeEl.getAttribute('datetime') || '';
+                        timestamp = (timeEl.textContent || '').trim();
+                    } else {
+                        // Fallback: some locales/themes render the timestamp
+                        // in a generic span with a class hint or aria. The
+                        // selector list is best-effort; if nothing matches,
+                        // timestamp stays empty.
+                        const dateEl = li?.querySelector(
+                            '[class*="msg-conversation-listitem__time-stamp"], '
+                            + '[class*="time-stamp"], '
+                            + '[aria-label*="ago"]'
+                        );
+                        if (dateEl) {
+                            timestamp = (dateEl.textContent || '').trim();
+                        }
+                    }
+                    // Capture the last-message preview snippet so callers can
+                    // keyword-filter without opening each thread (which marks
+                    // it as read on LinkedIn's side). LinkedIn renders the
+                    // snippet as a <p> with a class containing "message-snippet"
+                    // or, in some locales/builds, "snippet"; fall through if
+                    // nothing matches and the snippet stays empty.
+                    let snippet = '';
+                    const snippetEl = li?.querySelector(
+                        '[class*="msg-conversation-listitem__message-snippet"], '
+                        + '[class*="message-snippet"], '
+                        + 'p[class*="snippet"]'
+                    );
+                    if (snippetEl) {
+                        snippet = (snippetEl.textContent || '').trim();
+                    }
                     const before = location.href;
                     clickTarget.click();
                     // Poll for the SPA URL to settle on the thread route. The
@@ -3001,7 +3046,13 @@ class LinkedInExtractor:
                         /\\/messaging\\/thread\\/([^/?#]+)/
                     );
                     if (match) {
-                        results.push({ ariaLabel, threadId: match[1] });
+                        results.push({
+                            ariaLabel,
+                            threadId: match[1],
+                            timestamp,
+                            timestampIso,
+                            snippet,
+                        });
                     }
                 }
                 return results;
@@ -3018,6 +3069,20 @@ class LinkedInExtractor:
             name = self._strip_select_conversation_prefix(conv.get("ariaLabel", ""))
             if name:
                 ref["text"] = name
+            # Prefer ISO from <time datetime="..."> (machine-sortable). Fall
+            # back to the rendered relative-time text ("2d", "May 5"). Both
+            # are LinkedIn UI-derived; Claude can parse either.
+            iso = conv.get("timestampIso", "").strip()
+            rel = conv.get("timestamp", "").strip()
+            if iso:
+                ref["timestamp"] = iso
+            elif rel:
+                ref["timestamp"] = rel
+            # Snippet (last-message preview) if LinkedIn rendered one in the
+            # sidebar; empty for new conversations with no last message.
+            snippet = conv.get("snippet", "").strip()
+            if snippet:
+                ref["snippet"] = snippet
             refs.append(ref)
         return refs
 

@@ -28,6 +28,11 @@ class Reference(TypedDict):
     text: NotRequired[str]
     context: NotRequired[str]
     value: NotRequired[str]
+    timestamp: NotRequired[str]  # Last-activity timestamp (e.g. "2d", "May 5",
+    # or ISO string from <time datetime="...">). Conversation refs only.
+    snippet: NotRequired[str]  # Visible last-message preview text from the
+    # inbox sidebar. Lets callers keyword-filter client-side without opening
+    # every thread. Conversation refs only; truncated by LinkedIn to ~80 chars.
 
 
 class RawReference(TypedDict, total=False):

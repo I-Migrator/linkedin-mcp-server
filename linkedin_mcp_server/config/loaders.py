@@ -62,6 +62,7 @@ class EnvironmentKeys:
     SLOW_MO = "SLOW_MO"
     VIEWPORT = "VIEWPORT"
     CHROME_PATH = "CHROME_PATH"
+    BROWSER_CHANNEL = "BROWSER_CHANNEL"
     USER_DATA_DIR = "USER_DATA_DIR"
     TOOL_TIMEOUT = "TOOL_TIMEOUT"
 
@@ -181,6 +182,12 @@ def load_from_env(config: AppConfig) -> AppConfig:
     if chrome_path_env := os.environ.get(EnvironmentKeys.CHROME_PATH):
         config.browser.chrome_path = chrome_path_env
 
+    # Patchright browser channel override (chrome, chromium, msedge)
+    if browser_channel_env := os.environ.get(EnvironmentKeys.BROWSER_CHANNEL):
+        channel_value = browser_channel_env.strip()
+        if channel_value:
+            config.browser.browser_channel = channel_value
+
     return config
 
 
@@ -278,6 +285,14 @@ def load_from_args(config: AppConfig) -> AppConfig:
         help="Path to Chrome/Chromium executable (for custom browser installations)",
     )
 
+    parser.add_argument(
+        "--browser-channel",
+        type=str,
+        default=None,
+        metavar="CHANNEL",
+        help="Patchright browser channel: chrome, chromium, msedge (advanced)",
+    )
+
     # Session management
     parser.add_argument(
         "--login",
@@ -353,6 +368,9 @@ def load_from_args(config: AppConfig) -> AppConfig:
 
     if args.chrome_path:
         config.browser.chrome_path = args.chrome_path
+
+    if args.browser_channel:
+        config.browser.browser_channel = args.browser_channel
 
     # Session management
     if args.login:

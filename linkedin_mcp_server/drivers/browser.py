@@ -8,6 +8,7 @@ automatic profile persistence.
 
 import logging
 import os
+import platform
 from pathlib import Path
 
 from linkedin_mcp_server.common_utils import secure_mkdir
@@ -24,6 +25,7 @@ from linkedin_mcp_server.common_utils import utcnow_iso
 from linkedin_mcp_server.config import get_config
 from linkedin_mcp_server.debug_trace import record_page_trace
 from linkedin_mcp_server.debug_utils import stabilize_navigation
+from linkedin_mcp_server.exceptions import BrowserSetupFailedError
 from linkedin_mcp_server.session_state import (
     SourceState,
     clear_runtime_profile,
@@ -180,17 +182,94 @@ async def _feed_auth_succeeds(
         return False
 
 
+_PATCHRIGHT_CHROMIUM_GLOB = (
+    "ms-playwright/chromium-*/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+)
+_CHROME_APP_MACOS = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+
+
+def _find_patchright_chromium() -> Path | None:
+    """Locate Patchright's bundled (patched) Chromium binary on macOS, newest first.
+
+    Patchright installs its patched Chromium under ms-playwright/ in one of two
+    cache locations depending on the install mode. We pick the newest match so
+    upgrades are picked up automatically.
+    """
+    search_roots = [
+        Path.home() / "Library" / "Caches",
+        Path.home() / ".cache",
+    ]
+    candidates: list[Path] = []
+    for root in search_roots:
+        if root.exists():
+            candidates.extend(root.glob(_PATCHRIGHT_CHROMIUM_GLOB))
+    candidates = [p for p in candidates if p.is_file() and os.access(p, os.X_OK)]
+    return sorted(candidates)[-1] if candidates else None
+
+
+def resolve_browser_launch_options() -> dict[str, str]:
+    """Pick browser launch options with anti-detection preserved by default.
+
+    Precedence (first match wins):
+      1. config.browser.chrome_path  -> executable_path (existing behaviour)
+      2. config.browser.browser_channel -> channel (explicit override)
+      3. macOS + bundled Patchright Chromium found -> executable_path to it
+         (preserves Patchright's binary-level anti-detection patches)
+      4. macOS + system Google Chrome installed -> channel="chrome"
+         (logged warning; reduced anti-detection)
+      5. macOS + neither found -> BrowserSetupFailedError with remediation hint
+      6. Other platforms with no override -> empty (Patchright default)
+    """
+    config = get_config()
+    launch_options: dict[str, str] = {}
+
+    if config.browser.chrome_path:
+        launch_options["executable_path"] = config.browser.chrome_path
+        logger.info("Using explicit CHROME_PATH: %s", config.browser.chrome_path)
+        return launch_options
+
+    if config.browser.browser_channel:
+        launch_options["channel"] = config.browser.browser_channel
+        logger.info(
+            "Using explicit BROWSER_CHANNEL: %s", config.browser.browser_channel
+        )
+        return launch_options
+
+    if platform.system() != "Darwin":
+        return launch_options  # Linux/Windows: unchanged upstream behaviour
+
+    bundled = _find_patchright_chromium()
+    if bundled is not None:
+        launch_options["executable_path"] = str(bundled)
+        logger.info(
+            "Using Patchright bundled Chromium at %s (anti-detection preserved)",
+            bundled,
+        )
+        return launch_options
+
+    if _CHROME_APP_MACOS.exists():
+        launch_options["channel"] = "chrome"
+        logger.warning(
+            "Patchright bundled Chromium not found on disk; falling back to "
+            "system Google Chrome. Anti-detection capability is reduced. "
+            "To restore: run `patchright install chromium` in the project venv."
+        )
+        return launch_options
+
+    raise BrowserSetupFailedError(
+        "No suitable browser found on macOS. Install Google Chrome "
+        "(`brew install --cask google-chrome`) OR run "
+        "`patchright install chromium` to install Patchright's bundled Chromium."
+    )
+
+
 def _launch_options() -> tuple[dict[str, str], dict[str, int]]:
     config = get_config()
     viewport = {
         "width": config.browser.viewport_width,
         "height": config.browser.viewport_height,
     }
-    launch_options: dict[str, str] = {}
-    if config.browser.chrome_path:
-        launch_options["executable_path"] = config.browser.chrome_path
-        logger.info("Using custom Chrome path: %s", config.browser.chrome_path)
-    return launch_options, viewport
+    return resolve_browser_launch_options(), viewport
 
 
 def _make_browser(

@@ -35,18 +35,32 @@ def register_messaging_tools(
     )
     async def get_inbox(
         ctx: Context,
-        limit: Annotated[int, Field(ge=1, le=50)] = 20,
+        limit: Annotated[int, Field(ge=1, le=200)] = 20,
         extractor: Any | None = None,
     ) -> dict[str, Any]:
         """
         List recent conversations from the LinkedIn messaging inbox.
 
+        Each returned conversation reference includes:
+        - ``timestamp``: ISO datetime if LinkedIn exposes ``<time datetime>``,
+          else the rendered relative-time text such as "2d" or "May 5"
+        - ``snippet``: the last-message preview text LinkedIn shows under the
+          participant name in the sidebar (when present). This lets callers
+          keyword-filter client-side without opening every thread (which
+          marks each thread as read on LinkedIn's side).
+
         Args:
             ctx: FastMCP context for progress reporting
-            limit: Maximum number of conversations to load (1-50, default 20)
+            limit: Maximum number of conversations to load (1-200, default 20).
+                Higher limits scroll the inbox more aggressively and click
+                each row to capture thread IDs; expect ~1-2 seconds per row
+                of click-through time at high limits.
 
         Returns:
-            Dict with url, sections (inbox -> raw text), and optional references.
+            Dict with url, sections (inbox -> raw text), and references whose
+            conversation entries include kind, url, text (participant name),
+            context, timestamp (last-activity), and snippet (last-message
+            preview) when LinkedIn renders one in the sidebar.
         """
         try:
             extractor = extractor or await get_ready_extractor(
@@ -161,22 +175,37 @@ def register_messaging_tools(
     async def search_conversations(
         keywords: str,
         ctx: Context,
-        limit: Annotated[int, Field(ge=1, le=50)] = 20,
+        limit: Annotated[int, Field(ge=1, le=200)] = 20,
         extractor: Any | None = None,
     ) -> dict[str, Any]:
         """
         Search messages by keyword.
 
+        Each returned conversation reference includes ``timestamp`` (ISO
+        datetime if available, else relative-time text) and ``snippet``
+        (the last-message preview LinkedIn shows in the sidebar) when
+        present, so callers can identify the most recent / most relevant
+        matches without opening every thread.
+
+        Note on coverage: LinkedIn's own search returns a single
+        relevance-ranked page (~10 results) regardless of ``limit``. For
+        broader coverage, run multiple searches with keyword variants and
+        deduplicate by thread URL, or pair this with ``get_inbox(limit=N)``
+        + client-side snippet filtering.
+
         Args:
             keywords: Search keywords to filter conversations
             ctx: FastMCP context for progress reporting
             limit: Maximum number of search-result rows to enumerate as
-                conversation references (1-50, default 20). Each enumeration
-                selects the row in LinkedIn's UI and may mark it as read, so
-                a low cap is preferable for noisy queries.
+                conversation references (1-200, default 20). Each enumeration
+                clicks the row in LinkedIn's UI (which may mark it as read);
+                at high limits this can take 1-2 seconds per result.
 
         Returns:
-            Dict with url, sections (search_results -> raw text), and optional references.
+            Dict with url, sections (search_results -> raw text), and
+            references whose conversation entries include kind, url, text
+            (participant name), context, timestamp, and snippet (when
+            LinkedIn renders one).
         """
         try:
             extractor = extractor or await get_ready_extractor(

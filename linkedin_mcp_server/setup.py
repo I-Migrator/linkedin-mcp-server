@@ -18,7 +18,10 @@ from linkedin_mcp_server.core import (
 )
 from linkedin_mcp_server.session_state import portable_cookie_path, write_source_state
 
-from linkedin_mcp_server.drivers.browser import get_profile_dir
+from linkedin_mcp_server.drivers.browser import (
+    get_profile_dir,
+    resolve_browser_launch_options,
+)
 
 
 async def interactive_login(
@@ -48,10 +51,8 @@ async def interactive_login(
     print("   Please log in manually. You have 5 minutes to complete authentication.")
     print("   (This handles 2FA, captcha, and any security challenges)")
 
-    launch_options: dict[str, Any] = {}
+    launch_options: dict[str, Any] = dict(resolve_browser_launch_options())
     config = get_config()
-    if config.browser.chrome_path:
-        launch_options["executable_path"] = config.browser.chrome_path
 
     viewport = {
         "width": config.browser.viewport_width,
