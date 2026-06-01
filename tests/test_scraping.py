@@ -3588,6 +3588,89 @@ class TestGetInbox:
         assert refs[0]["text"] == "Tony Chan"
 
 
+class TestGetSentInvitations:
+    async def test_returns_sent_invitations_section(self, mock_page):
+        """get_sent_invitations returns sections with sent_invitations key."""
+        extractor = LinkedInExtractor(mock_page)
+        person_refs = [
+            {"kind": "person", "url": "/in/alice/", "text": "Alice Adams"},
+            {"kind": "person", "url": "/in/bob/", "text": "Bob Burton"},
+        ]
+        with (
+            patch.object(extractor, "_navigate_to_page", new_callable=AsyncMock),
+            patch(
+                "linkedin_mcp_server.scraping.extractor.detect_rate_limit",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "linkedin_mcp_server.scraping.extractor.handle_modal_close",
+                new_callable=AsyncMock,
+            ),
+            patch.object(extractor, "_wait_for_main_text", new_callable=AsyncMock),
+            patch.object(
+                extractor, "_scroll_main_scrollable_region", new_callable=AsyncMock
+            ),
+            patch.object(
+                extractor,
+                "_extract_root_content",
+                new_callable=AsyncMock,
+                return_value={
+                    "text": "Alice Adams\nSent 2 weeks ago\nBob Burton\nSent 3 days ago",
+                    "references": [],
+                },
+            ),
+            patch(
+                "linkedin_mcp_server.scraping.extractor.strip_linkedin_noise",
+                return_value="Alice Adams\nSent 2 weeks ago\nBob Burton\nSent 3 days ago",
+            ),
+            patch(
+                "linkedin_mcp_server.scraping.extractor.build_references",
+                return_value=person_refs,
+            ),
+        ):
+            result = await extractor.get_sent_invitations(limit=50)
+
+        assert (
+            result["url"]
+            == "https://www.linkedin.com/mynetwork/invitation-manager/sent/"
+        )
+        assert "sent_invitations" in result["sections"]
+        assert "Alice Adams" in result["sections"]["sent_invitations"]
+        assert result["references"]["sent_invitations"] == person_refs
+
+    async def test_empty_sent_invitations(self, mock_page):
+        """get_sent_invitations returns empty sections when no pending invites."""
+        extractor = LinkedInExtractor(mock_page)
+        with (
+            patch.object(extractor, "_navigate_to_page", new_callable=AsyncMock),
+            patch(
+                "linkedin_mcp_server.scraping.extractor.detect_rate_limit",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "linkedin_mcp_server.scraping.extractor.handle_modal_close",
+                new_callable=AsyncMock,
+            ),
+            patch.object(extractor, "_wait_for_main_text", new_callable=AsyncMock),
+            patch.object(
+                extractor, "_scroll_main_scrollable_region", new_callable=AsyncMock
+            ),
+            patch.object(
+                extractor,
+                "_extract_root_content",
+                new_callable=AsyncMock,
+                return_value={"text": "", "references": []},
+            ),
+            patch(
+                "linkedin_mcp_server.scraping.extractor.strip_linkedin_noise",
+                return_value="",
+            ),
+        ):
+            result = await extractor.get_sent_invitations(limit=10)
+
+        assert result["sections"] == {}
+
+
 class TestGetConversation:
     async def test_returns_conversation_by_thread_id(self, mock_page):
         """get_conversation with thread_id navigates directly to thread URL."""

@@ -34,6 +34,7 @@ def _make_mock_extractor(scrape_result: dict) -> MagicMock:
     mock.search_conversations = AsyncMock(return_value=scrape_result)
     mock.send_message = AsyncMock(return_value=scrape_result)
     mock.get_my_profile = AsyncMock(return_value=scrape_result)
+    mock.get_sent_invitations = AsyncMock(return_value=scrape_result)
     mock.search_companies = AsyncMock(return_value=scrape_result)
     mock.get_company_employees = AsyncMock(return_value=scrape_result)
     mock.extract_page = AsyncMock(
@@ -665,6 +666,68 @@ class TestGetSidebarProfilesTool:
         tool_fn = await get_tool_fn(mcp, "get_sidebar_profiles")
         with pytest.raises(ToolError, match="Session expired"):
             await tool_fn("test-user", mock_context, extractor=mock_extractor)
+
+
+class TestGetSentInvitationsTool:
+    async def test_get_sent_invitations_success(self, mock_context):
+        expected = {
+            "url": "https://www.linkedin.com/mynetwork/invitation-manager/sent/",
+            "sections": {"sent_invitations": "Alice Adams\nSent 2 weeks ago"},
+            "references": {
+                "sent_invitations": [
+                    {"kind": "person", "url": "/in/alice/", "text": "Alice Adams"},
+                ],
+            },
+        }
+        mock_extractor = _make_mock_extractor(expected)
+
+        from linkedin_mcp_server.tools.person import register_person_tools
+
+        mcp = FastMCP("test")
+        register_person_tools(mcp)
+
+        tool_fn = await get_tool_fn(mcp, "get_sent_invitations")
+        result = await tool_fn(mock_context, extractor=mock_extractor)
+
+        assert "sent_invitations" in result["sections"]
+        assert result["references"]["sent_invitations"][0]["url"] == "/in/alice/"
+        mock_extractor.get_sent_invitations.assert_awaited_once_with(limit=100)
+
+    async def test_get_sent_invitations_custom_limit(self, mock_context):
+        expected = {
+            "url": "https://www.linkedin.com/mynetwork/invitation-manager/sent/",
+            "sections": {},
+        }
+        mock_extractor = _make_mock_extractor(expected)
+
+        from linkedin_mcp_server.tools.person import register_person_tools
+
+        mcp = FastMCP("test")
+        register_person_tools(mcp)
+
+        tool_fn = await get_tool_fn(mcp, "get_sent_invitations")
+        await tool_fn(mock_context, limit=25, extractor=mock_extractor)
+
+        mock_extractor.get_sent_invitations.assert_awaited_once_with(limit=25)
+
+    async def test_get_sent_invitations_error(self, mock_context):
+        from fastmcp.exceptions import ToolError
+
+        from linkedin_mcp_server.exceptions import SessionExpiredError
+
+        mock_extractor = MagicMock()
+        mock_extractor.get_sent_invitations = AsyncMock(
+            side_effect=SessionExpiredError()
+        )
+
+        from linkedin_mcp_server.tools.person import register_person_tools
+
+        mcp = FastMCP("test")
+        register_person_tools(mcp)
+
+        tool_fn = await get_tool_fn(mcp, "get_sent_invitations")
+        with pytest.raises(ToolError, match="Session expired"):
+            await tool_fn(mock_context, extractor=mock_extractor)
 
 
 class TestMessagingTools:

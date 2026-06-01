@@ -300,6 +300,64 @@ def register_person_tools(
 
     @mcp.tool(
         timeout=tool_timeout,
+        title="Get Sent Invitations",
+        annotations={"readOnlyHint": True, "openWorldHint": True},
+        tags={"person", "scraping"},
+        exclude_args=["extractor"],
+    )
+    async def get_sent_invitations(
+        ctx: Context,
+        limit: Annotated[int, Field(ge=1, le=200)] = 100,
+        extractor: Any | None = None,
+    ) -> dict[str, Any]:
+        """
+        List the authenticated user's currently-pending sent connection invitations.
+
+        Scrapes /mynetwork/invitation-manager/sent/. Only invites that are
+        still pending appear; accepted, declined, and auto-withdrawn invites
+        (LinkedIn auto-withdraws after ~6 weeks) are not surfaced. LinkedIn
+        caps the displayed list at roughly 100 entries.
+
+        Args:
+            ctx: FastMCP context for progress reporting
+            limit: Soft cap on how aggressively to scroll to load more rows.
+                The page is usually all-on-one-screen so the default (100)
+                is enough.
+
+        Returns:
+            Dict with url, sections={"sent_invitations": raw_text}, and
+            references["sent_invitations"] — a list of person references
+            ({kind: "person", url: "/in/...", text: <name>}) one per
+            pending invite. The LLM should parse the raw text to recover
+            per-row metadata such as "Sent 3 weeks ago" timestamps and the
+            recipient's headline.
+        """
+        try:
+            extractor = extractor or await get_ready_extractor(
+                ctx, tool_name="get_sent_invitations"
+            )
+            logger.info("Scraping sent invitations (limit=%s)", limit)
+
+            await ctx.report_progress(
+                progress=0, total=100, message="Loading sent invitations"
+            )
+
+            result = await extractor.get_sent_invitations(limit=limit)
+
+            await ctx.report_progress(progress=100, total=100, message="Complete")
+
+            return result
+
+        except AuthenticationError as e:
+            try:
+                await handle_auth_error(e, ctx)
+            except Exception as relogin_exc:
+                raise_tool_error(relogin_exc, "get_sent_invitations")
+        except Exception as e:
+            raise_tool_error(e, "get_sent_invitations")  # NoReturn
+
+    @mcp.tool(
+        timeout=tool_timeout,
         title="Get My Profile",
         annotations={"readOnlyHint": True, "openWorldHint": True},
         tags={"person", "scraping"},

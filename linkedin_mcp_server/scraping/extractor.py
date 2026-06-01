@@ -2925,6 +2925,45 @@ class LinkedInExtractor:
             references=references,
         )
 
+    async def get_sent_invitations(self, limit: int = 100) -> dict[str, Any]:
+        """List pending sent connection invitations.
+
+        LinkedIn surfaces only currently-pending invites here; accepted,
+        declined, and auto-withdrawn (>~6 weeks old) invites are not
+        included. The page caps at LinkedIn's display ceiling
+        (~100 entries) regardless of how many were sent historically.
+
+        Recipient anchors are real ``<a href="/in/.../">`` tags, so
+        ``_extract_root_content`` + ``build_references`` is sufficient —
+        no click-to-resolve dance like ``get_inbox`` needs.
+        """
+        url = "https://www.linkedin.com/mynetwork/invitation-manager/sent/"
+        await self._navigate_to_page(url)
+        await detect_rate_limit(self._page)
+        await self._wait_for_main_text(log_context="Sent invitations")
+        await handle_modal_close(self._page)
+
+        scrolls = max(2, min(limit // 10, 15))
+        await self._scroll_main_scrollable_region(
+            position="bottom", attempts=scrolls, pause_time=0.5
+        )
+
+        raw_result = await self._extract_root_content(["main"])
+        raw = raw_result["text"]
+        cleaned = strip_linkedin_noise(raw) if raw else ""
+        references: list[Reference] = (
+            build_references(raw_result["references"], "sent_invitations")
+            if cleaned
+            else []
+        )
+
+        return self._single_section_result(
+            url,
+            "sent_invitations",
+            cleaned,
+            references=references,
+        )
+
     async def _extract_conversation_thread_refs(
         self, limit: int | None, context: str
     ) -> list[Reference]:

@@ -106,6 +106,10 @@ _REFERENCE_CAPS = {
     "contact_info": 8,
     "inbox": 30,
     "conversation": 12,
+    # LinkedIn caps weekly invitations at ~100, and the sent page itself
+    # displays at most ~100 currently-pending entries. 120 gives headroom
+    # without truncating real data.
+    "sent_invitations": 120,
     # Headroom for get_feed's num_posts ceiling (Field(ge=1, le=50)).
     # Kept in sync with the literal cap=50 in extractor._build_feed_references
     # where SDUI-derived /posts/<slug> permalinks are appended.
