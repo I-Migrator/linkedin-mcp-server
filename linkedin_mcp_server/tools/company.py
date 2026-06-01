@@ -10,6 +10,7 @@ from typing import Any
 
 from fastmcp import Context, FastMCP
 
+from linkedin_mcp_server import safety
 from linkedin_mcp_server.callbacks import MCPContextProgressCallback
 from linkedin_mcp_server.config.schema import DEFAULT_TOOL_TIMEOUT_SECONDS
 from linkedin_mcp_server.core.exceptions import AuthenticationError
@@ -69,6 +70,7 @@ def register_company_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="get_company_profile"
             )
+            await safety.check("get_company_profile")
             requested, unknown = parse_company_sections(sections)
 
             logger.info(
@@ -122,6 +124,7 @@ def register_company_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="get_company_posts"
             )
+            await safety.check("get_company_posts")
             logger.info("Scraping company posts: %s", company_name)
 
             await ctx.report_progress(
@@ -188,6 +191,7 @@ def register_company_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="search_companies"
             )
+            await safety.check("search_companies")
             logger.info("Searching companies: keywords='%s'", keywords)
 
             await ctx.report_progress(
@@ -247,6 +251,7 @@ def register_company_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="get_company_employees"
             )
+            await safety.check("get_company_employees")
             logger.info(
                 "Scraping company employees: %s (keywords=%s)", company_name, keywords
             )

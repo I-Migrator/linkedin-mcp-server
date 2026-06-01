@@ -10,6 +10,7 @@ from typing import Annotated, Any
 from fastmcp import Context, FastMCP
 from pydantic import Field
 
+from linkedin_mcp_server import safety
 from linkedin_mcp_server.config.schema import DEFAULT_TOOL_TIMEOUT_SECONDS
 from linkedin_mcp_server.core.exceptions import (
     AuthenticationError,
@@ -272,6 +273,7 @@ def register_messaging_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="send_message"
             )
+            await safety.check("send_message")
             logger.info(
                 "Sending message to %s (confirm_send=%s)",
                 linkedin_username,

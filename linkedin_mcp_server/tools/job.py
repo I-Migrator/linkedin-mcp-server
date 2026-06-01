@@ -10,6 +10,7 @@ from typing import Annotated, Any
 from fastmcp import Context, FastMCP
 from pydantic import Field
 
+from linkedin_mcp_server import safety
 from linkedin_mcp_server.config.schema import DEFAULT_TOOL_TIMEOUT_SECONDS
 from linkedin_mcp_server.core.exceptions import AuthenticationError
 from linkedin_mcp_server.dependencies import get_ready_extractor, handle_auth_error
@@ -50,6 +51,7 @@ def register_job_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="get_job_details"
             )
+            await safety.check("get_job_details")
             logger.info("Scraping job: %s", job_id)
 
             await ctx.report_progress(
@@ -115,6 +117,7 @@ def register_job_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="search_jobs"
             )
+            await safety.check("search_jobs")
             logger.info(
                 "Searching jobs: keywords='%s', location='%s', max_pages=%d",
                 keywords,

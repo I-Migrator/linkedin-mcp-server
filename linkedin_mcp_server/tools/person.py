@@ -12,6 +12,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field
 
+from linkedin_mcp_server import safety
 from linkedin_mcp_server.callbacks import MCPContextProgressCallback
 from linkedin_mcp_server.config.schema import DEFAULT_TOOL_TIMEOUT_SECONDS
 from linkedin_mcp_server.core.exceptions import AuthenticationError
@@ -72,6 +73,7 @@ def register_person_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="get_person_profile"
             )
+            await safety.check("get_person_profile")
             requested, unknown = parse_person_sections(sections)
 
             logger.info(
@@ -141,6 +143,7 @@ def register_person_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="search_people"
             )
+            await safety.check("search_people")
             logger.info(
                 "Searching people: keywords='%s', location='%s', network=%s, current_company='%s'",
                 keywords,
@@ -216,6 +219,7 @@ def register_person_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="connect_with_person"
             )
+            await safety.check("connect_with_person")
             logger.info(
                 "Connecting with person: %s (note=%s)",
                 linkedin_username,
@@ -278,6 +282,7 @@ def register_person_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="get_sidebar_profiles"
             )
+            await safety.check("get_sidebar_profiles")
             logger.info("Getting sidebar profiles for: %s", linkedin_username)
 
             await ctx.report_progress(
@@ -336,6 +341,7 @@ def register_person_tools(
             extractor = extractor or await get_ready_extractor(
                 ctx, tool_name="get_sent_invitations"
             )
+            await safety.check("get_sent_invitations")
             logger.info("Scraping sent invitations (limit=%s)", limit)
 
             await ctx.report_progress(

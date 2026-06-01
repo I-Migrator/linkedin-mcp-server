@@ -93,3 +93,14 @@ def mock_context():
     ctx = MagicMock()
     ctx.report_progress = AsyncMock()
     return ctx
+
+
+@pytest.fixture(autouse=True)
+def isolate_safety_usage(tmp_path, monkeypatch):
+    """Per-test usage file + instant jitter, so safety.check is a no-op cost."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setenv("LINKEDIN_MCP_USAGE_FILE", str(tmp_path / "usage.json"))
+    monkeypatch.setattr(
+        "linkedin_mcp_server.safety.limits._sleep", AsyncMock(return_value=None)
+    )
